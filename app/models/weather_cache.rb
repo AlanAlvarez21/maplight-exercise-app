@@ -1,14 +1,8 @@
-class WeatherCache
-  include ActiveModel::Model
-  attr_accessor :address, :location, :data, :created_at
+class WeatherCache < ActiveRecord::Base
+  validates :address, presence: true
+  validates :location, presence: true
+  validates :data, presence: true
 
-  def initialize(attributes = {})
-    @address = attributes[:address]
-    @location = attributes[:location]
-    @data = attributes[:data]
-    @created_at = attributes[:created_at] || Time.current
-  end
-
-  # This class is kept primarily for compatibility with the existing code structure
-  # The actual caching is handled directly in Rails.cache in the WeatherService
+  scope :fresh, -> { where('created_at > ?', 30.minutes.ago) }
+  scope :expired, -> { where('created_at <= ?', 30.minutes.ago) }
 end

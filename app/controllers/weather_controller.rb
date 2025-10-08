@@ -36,9 +36,9 @@ class WeatherController < ApplicationController
             render :index
           }
           format.turbo_stream {
-            # For Turbo requests, render the weather content partial
-            render turbo_stream: turbo_stream.replace("weather_content", 
-              render_to_string(partial: "weather_content", 
+            # For Turbo requests, render only the weather data partial
+            render turbo_stream: turbo_stream.replace("weather_data_container", 
+              render_to_string(partial: "weather_data", 
                                locals: { weather_data: @weather_data, 
                                          address: @address, 
                                          cached: @cached, 
@@ -56,9 +56,9 @@ class WeatherController < ApplicationController
             render :index
           }
           format.turbo_stream {
-            # For Turbo requests, render the weather content partial with error state
-            render turbo_stream: turbo_stream.replace("weather_content", 
-              render_to_string(partial: "weather_content", 
+            # For Turbo requests, render only the weather data partial with error state
+            render turbo_stream: turbo_stream.replace("weather_data_container", 
+              render_to_string(partial: "weather_data", 
                                locals: { weather_data: nil, 
                                          address: address, 
                                          cached: nil, 
@@ -67,21 +67,8 @@ class WeatherController < ApplicationController
         end
       end
     else
-      flash.now[:error] = "Please enter an address or zip code."
-      
-      respond_to do |format|
-        format.html { 
-          render :index
-        }
-        format.turbo_stream {
-          render turbo_stream: turbo_stream.replace("weather_content", 
-            render_to_string(partial: "weather_content", 
-                             locals: { weather_data: nil, 
-                                       address: nil, 
-                                       cached: nil, 
-                                       cached_at: nil }))
-        }
-      end
+      # When no address is provided, redirect to index
+      redirect_to weather_path
     end
   end
 
@@ -132,9 +119,9 @@ class WeatherController < ApplicationController
               
               # Use Turbo stream to update the weather content with fresh data
               render turbo_stream: [
-                turbo_stream.prepend("weather_content", success_html.html_safe),
-                turbo_stream.replace("weather_content", 
-                                   render_to_string(partial: "weather_content", 
+                turbo_stream.prepend("weather_data_container", success_html.html_safe),
+                turbo_stream.replace("weather_data_container", 
+                                   render_to_string(partial: "weather_data", 
                                                     locals: { 
                                                       weather_data: fresh_weather_data, 
                                                       address: address, 
@@ -161,7 +148,7 @@ class WeatherController < ApplicationController
                            "</div>" +
                            "</div>" +
                            "</div>"
-              render turbo_stream: turbo_stream.replace("weather_content", error_html.html_safe)
+              render turbo_stream: turbo_stream.replace("weather_data_container", error_html.html_safe)
             }
           end
         end
@@ -213,9 +200,9 @@ class WeatherController < ApplicationController
           
           # Use Turbo stream to show success message and update weather content
           render turbo_stream: [
-            turbo_stream.prepend("weather_content", success_html.html_safe),
-            turbo_stream.replace("weather_content", 
-                                 render_to_string(partial: "weather_content", 
+            turbo_stream.prepend("weather_data_container", success_html.html_safe),
+            turbo_stream.replace("weather_data_container", 
+                                 render_to_string(partial: "weather_data", 
                                                   locals: { weather_data: nil, address: nil, cached: nil, cached_at: nil }))
           ]
         }
@@ -237,7 +224,7 @@ class WeatherController < ApplicationController
                          "</div>" +
                          "</div>" +
                          "</div>"
-            render turbo_stream: turbo_stream.replace("weather_content", error_html.html_safe)
+            render turbo_stream: turbo_stream.replace("weather_data_container", error_html.html_safe)
           }
         end
       end

@@ -1,0 +1,210 @@
+<% weather_data = local_assigns[:weather_data] || @weather_data %>
+<% address = local_assigns[:address] || @address %>
+<% cached = local_assigns[:cached] || @cached %>
+<% cached_at = local_assigns[:cached_at] || @cached_at %>
+
+<% if weather_data %>
+  <!-- Enhanced weather display with better visual design -->
+  <div class="max-w-6xl mx-auto">
+    
+    <%# Mostrar información de caché si está disponible %>
+    <% if cached && cached_at %>
+      <div class="mb-4 flex items-center gap-2 self-start">
+        <span class="text-md text-gray-500 bg-green-300 px-2 py-1 rounded whitespace-nowrap">
+          Cached: <%= time_ago_in_words(cached_at) %> ago
+        </span>
+      </div>
+    <% end %>
+    
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:items-start">
+      <div class="lg:col-span-2">
+        <!-- Main Weather Card with enhanced styling -->
+        <div class="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl p-8 mb-6 transition-all duration-300 hover:shadow-2xl">
+          <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+            <div class="flex-1">
+              <div class="flex flex-col md:flex-row md:items-start md:justify-between">
+                <div>
+                  <h1 class="text-4xl md:text-5xl font-bold text-gray-800 mb-2"><%= weather_data[:location] %></h1>
+                  <p class="text-2xl md:text-3xl font-semibold text-blue-600 mb-1"><%= weather_data[:current_temperature] %>°F</p>
+                  <p class="text-lg text-gray-600 capitalize mb-4 md:mb-0"><%= weather_data[:description] %></p>
+                </div>
+                
+             
+              </div>
+              
+              <div class="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4 w-full">
+                <div class="bg-blue-50 p-3 rounded-lg">
+                  <p class="text-sm text-gray-600">Feels Like</p>
+                  <p class="font-semibold text-gray-800"><%= weather_data[:feels_like] %>°F</p>
+                </div>
+                <div class="bg-blue-50 p-3 rounded-lg">
+                  <p class="text-sm text-gray-600">Humidity</p>
+                  <p class="font-semibold text-gray-800"><%= weather_data[:humidity] %>%</p>
+                </div>
+                <div class="bg-blue-50 p-3 rounded-lg">
+                  <p class="text-sm text-gray-600">Wind</p>
+                  <p class="font-semibold text-gray-800"><%= weather_data[:wind_speed] %> mph</p>
+                </div>
+                <div class="bg-blue-50 p-3 rounded-lg">
+                  <p class="text-sm text-gray-600">Pressure</p>
+                  <p class="font-semibold text-gray-800"><%= weather_data[:pressure] %> hPa</p>
+                </div>
+              </div>
+            </div>
+            
+            <div class="flex flex-col items-center justify-center">
+              <% if weather_data[:icon_url] %>
+                <%= image_tag weather_data[:icon_url], class: "w-32 h-32 object-contain", alt: weather_data[:description] %>
+              <% else %>
+                <svg class="w-32 h-32 fill-current text-yellow-400" xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
+                  <path d="M0 0h24v24H0V0z" fill="none"/>
+                  <path d="M6.76 4.84l-1.8-1.79-1.41 1.41 1.79 1.79zM1 10.5h3v2H1zM11 .55h2V3.5h-2zm8.04 2.495l1.408 1.407-1.79 1.79-1.407-1.408zm-1.8 15.115l1.79 1.8 1.41-1.41-1.8-1.79zM20 10.5h3v2h-3zm-8-5c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm-1 4h2v2.95h-2zm-7.45-.96l1.41 1.41 1.79-1.8-1.41-1.41z"/>
+                </svg>
+              <% end %>
+              <p class="mt-2 text-gray-600 text-sm"><%= Time.current.strftime("%B %d, %Y") %></p>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Hourly Forecast -->
+        <% if weather_data[:hourly_forecast] && weather_data[:hourly_forecast].any? %>
+          <div class="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl p-6 mb-6">
+            <h3 class="text-xl font-bold text-gray-800 mb-4">Hourly Forecast</h3>
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+              <% weather_data[:hourly_forecast].each do |hourly| %>
+                <div class="flex flex-col items-center p-3 bg-blue-50 rounded-lg">
+                  <p class="font-semibold text-gray-800"><%= hourly[:time] %></p>
+                  <% if hourly[:icon] %>
+                    <%= image_tag "https://openweathermap.org/img/w/#{hourly[:icon]}.png", class: "w-10 h-10 my-2", alt: hourly[:condition] %>
+                  <% else %>
+                    <svg class="w-10 h-10 fill-current text-gray-400 my-2" xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
+                      <path d="M0 0h24v24H0V0z" fill="none"/>
+                      <path d="M6.76 4.84l-1.8-1.79-1.41 1.41 1.79 1.79zM1 10.5h3v2H1zM11 .55h2V3.5h-2zm8.04 2.495l1.408 1.407-1.79 1.79-1.407-1.408zm-1.8 15.115l1.79 1.8 1.41-1.41-1.8-1.79zM20 10.5h3v2h-3zm-8-5c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm-1 4h2v2.95h-2zm-7.45-.96l1.41 1.41 1.79-1.8-1.41-1.41z"/>
+                    </svg>
+                  <% end %>
+                  <p class="font-bold text-gray-800"><%= hourly[:temp] %>°</p>
+                  <p class="text-sm text-gray-600 capitalize"><%= hourly[:condition] %></p>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+        <% end %>
+      </div>
+      
+      <div>
+        <!-- 5-Day Forecast with enhanced styling -->
+        <div class="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl px-6 pt-6 pb-34">
+          <h3 class="text-xl font-bold text-gray-800 mb-11">5-Day Forecast</h3>
+          
+          <div class="space-y-10.5">
+            <% weather_data[:forecast].first(5).each do |day| %>
+              <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-blue-50 transition-colors">
+                <div class="w-1/3">
+                  <p class="font-semibold text-gray-800"><%= day[:day] %></p>
+                  <p class="text-sm text-gray-600"><%= day[:date] %></p>
+                </div>
+                
+                <div class="w-1/4 flex justify-center">
+                  <% if day[:icon] %>
+                    <%= image_tag "https://openweathermap.org/img/w/#{day[:icon]}.png", class: "h-10 w-10", alt: day[:condition] %>
+                  <% else %>
+                    <svg class="h-10 w-10 fill-current text-gray-400" xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
+                      <path d="M0 0h24v24H0V0z" fill="none"/>
+                      <path d="M6.76 4.84l-1.8-1.79-1.41 1.41 1.79 1.79zM1 10.5h3v2H1zM11 .55h2V3.5h-2zm8.04 2.495l1.408 1.407-1.79 1.79-1.407-1.408zm-1.8 15.115l1.79 1.8 1.41-1.41-1.8-1.79zM20 10.5h3v2h-3zm-8-5c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm-1 4h2v2.95h-2zm-7.45-.96l1.41 1.41 1.79-1.8-1.41-1.41z"/>
+                    </svg>
+                  <% end %>
+                </div>
+                
+                <div class="w-1/4 text-right">
+                  <span class="font-bold text-gray-800"><%= day[:high] %>°</span>
+                  <span class="text-gray-600"> / <%= day[:low] %>°</span>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+<% else %>
+  <!-- Enhanced no weather data view with better styling -->
+  <div class="max-w-2xl mx-auto">
+    <div class="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl p-8 mb-8 text-center">
+      <div class="mx-auto w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mb-6">
+        <svg class="w-12 h-12 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>
+      </div>
+      
+      <h2 class="text-2xl font-bold text-gray-800 mb-2">Get Weather Information</h2>
+      <p class="text-gray-600 mb-8">Enter an address, city, or postal code to get current weather and forecast</p>
+      
+      <%# Search Form for when no data is loaded %>
+      <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
+        <%= render "weather_search_form", has_weather_data: false %>
+      </div>
+
+      
+      <%# Display API key setup instructions if no API key is configured %>
+      <% api_key_available = ENV['OPENWEATHER_API_KEY'] || (Rails.application.credentials.openweather_api_key rescue nil) %>
+      <% unless api_key_available %>
+        <div class="mt-4 bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 p-4 rounded-lg">
+          <div class="flex items-start">
+            <div class="flex-shrink-0 pt-1">
+              <svg class="h-5 w-5 text-yellow-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+              </svg>
+            </div>
+            <div class="ml-3">
+              <h3 class="text-sm font-medium text-yellow-800">API Key Required</h3>
+              <div class="mt-2 text-sm text-yellow-700">
+                <p>
+                  To use this application, you need to obtain an API key from 
+                  <a href="https://openweathermap.org/api" target="_blank" class="font-medium text-yellow-900 underline hover:text-yellow-800">OpenWeatherMap</a> 
+                  and set it as an environment variable:
+                </p>
+                <p class="mt-1 font-mono bg-yellow-100 p-2 rounded text-xs">
+                  export OPENWEATHER_API_KEY=your_api_key_here
+                </p>
+                <p class="mt-2">
+                  Or add it to your Rails credentials:
+                </p>
+                <p class="mt-1 font-mono bg-yellow-100 p-2 rounded text-xs">
+                  rails credentials:edit
+                </p>
+                <p class="mt-1">
+                  And add: <code class="font-mono">openweather_api_key: your_api_key_here</code>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      <% end %>
+    </div>
+
+    <%# Display flash errors if present %>
+    <% if flash[:error] %>
+      <div class="bg-gradient-to-r from-red-50 to-red-100 border-l-4 border-red-500 p-4 rounded-lg max-w-2xl mx-auto">
+        <div class="flex">
+          <div class="flex-shrink-0 pt-1">
+            <svg class="h-5 w-5 text-red-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+            </svg>
+          </div>
+          <div class="ml-3">
+            <p class="text-sm text-red-700">
+              <%= flash[:error] %>
+            </p>
+          </div>
+        </div>
+      </div>
+    <% end %>
+
+    <%# Show a message when there's no data but also no error %>
+    <% if defined?(local_assigns[:weather_result] || @weather_result) && (local_assigns[:weather_result] || @weather_result).present? && !weather_data && !flash[:error] %>
+      <div class="bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg max-w-2xl mx-auto mt-4">
+        No weather data available for '<strong><%= address %></strong>'. Please try another location.
+      </div>
+    <% end %>
+  </div>
+<% end %>

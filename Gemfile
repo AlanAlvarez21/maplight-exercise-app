@@ -65,3 +65,9 @@ end
 
 gem "dockerfile-rails", ">= 1.7", group: :development
 gem "dotenv-rails", require: "dotenv/load"
+
+group :test do
+  gem 'rails-controller-testing'
+  gem 'shoulda-matchers'
+  gem 'factory_bot_rails'
+end
