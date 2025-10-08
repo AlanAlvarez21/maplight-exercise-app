@@ -1,5 +1,7 @@
 # Weather Forecast Application
 
+<img width="1171" height="761" alt="Screenshot 2025-10-08 at 2 06 28 a m" src="https://github.com/user-attachments/assets/164e8c88-2776-468d-ab6a-f9488d964404" />
+
 A Ruby on Rails application that provides weather forecasts based on user-provided addresses or ZIP codes. The application leverages the OpenWeatherMap API with Redis caching for improved performance and reduced API usage.
 
 ## Features
