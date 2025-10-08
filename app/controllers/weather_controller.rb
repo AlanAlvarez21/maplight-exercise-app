@@ -9,7 +9,13 @@ class WeatherController < ApplicationController
         @weather_data = @weather_result[:data]
 
         unless @weather_data
-          flash.now[:error] = "Could not retrieve weather data for '#{@address}'. Please try using a more specific format like 'City, State' or 'City, Country'. For ZIP codes, ensure they are valid for the US."
+          # Check if the geocoding failed because the ZIP code doesn't exist
+          coordinates = WeatherService.new.send(:geocode_address, @address)
+          if coordinates.is_a?(Hash) && coordinates[:error] == "not_found"
+            flash.now[:error] = "ZIP code '#{@address}' does not exist. Please enter a valid ZIP code."
+          else
+            flash.now[:error] = "Could not retrieve weather data for '#{@address}'. Please try using a more specific format like 'City, State' or 'City, Country'. For ZIP codes, ensure they are valid for the US."
+          end
         end
       rescue => e
         Rails.logger.error "Error retrieving weather forecast: #{e.message}"
@@ -30,10 +36,18 @@ class WeatherController < ApplicationController
         @weather_data = weather_result[:data]
         @address = address
 
+        # Check if the geocoding failed because the ZIP code doesn't exist
+        unless @weather_data
+          coordinates = WeatherService.new.send(:geocode_address, address)
+          if coordinates.is_a?(Hash) && coordinates[:error] == "not_found"
+            flash.now[:error] = "ZIP code '#{address}' does not exist. Please enter a valid ZIP code."
+          end
+        end
+
         respond_to do |format|
           format.html { 
-            # For regular HTML requests, render the index template
-            render :index
+            # For regular HTML requests, redirect to index with address parameter
+            redirect_to weather_path(address: address)
           }
           format.turbo_stream {
             # For Turbo requests, render only the weather data partial
@@ -67,7 +81,8 @@ class WeatherController < ApplicationController
         end
       end
     else
-      # When no address is provided, redirect to index
+      # When no address is provided, set an error flash message and redirect to index
+      flash[:error] = "Please enter an address or zip code"
       redirect_to weather_path
     end
   end
