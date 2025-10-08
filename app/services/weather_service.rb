@@ -20,21 +20,21 @@ class WeatherService
       raise "OpenWeather API key is not configured. Please set OPENWEATHER_API_KEY environment variable."
     end
 
-    # First, try to find in cache
-    # Look for cached data using various possible cache keys
+    # First, try to find any cached data for this address (to avoid API calls when possible)
     normalized_address = generate_cache_key(address)
+    # Look for any fresh cache entry for this address regardless of location
+    cache_entry = WeatherCache.fresh.find_by(address: normalized_address)
     
-    # Look for cached data by trying different possible coordinate combinations
-    # Since we don't know the exact coordinates ahead of time, we'll need to
-    # implement a different caching strategy - cache using just the normalized address
-    cache_key = "weather_cache:#{normalized_address}:*"
-    
-    # Actually, for this implementation, let's use a simpler approach:
-    # We'll cache using the normalized address and let the geocoding happen every time
-    # Or better yet, update our approach to cache using a combination of address and coordinates once known
-    
-    # The original approach: try to find cached data based on address and coordinates
-    # Since we don't know coordinates until after geocoding, we'll just check the cache after geocoding
+    if cache_entry
+      Rails.logger.info "Returning cached weather data for: #{address}"
+      return {
+        cached: true,
+        data: JSON.parse(cache_entry.data, symbolize_names: true),
+        cached_at: cache_entry.created_at
+      }
+    end
+
+    # If no cached data exists for this address, geocode the address to get coordinates
     coordinates = geocode_address(address)
     unless coordinates
       Rails.logger.error "Failed to geocode address: #{address}"
@@ -45,64 +45,26 @@ class WeatherService
       }
     end
     
-    cache_key = "weather_cache:#{normalized_address}:#{coordinates[:lat]},#{coordinates[:lon]}"
-    cached_data = nil
-    begin
-      cached_data = Rails.cache.read(cache_key)
-    rescue Redis::BaseError, Redis::CannotConnectError => e
-      Rails.logger.warn "Redis connection error while reading cache: #{e.message}"
-      # Continue with API call if cache is unavailable
-    end
+    # Look for cached data in WeatherCache model using address and coordinates
+    cache_entry = WeatherCache.fresh.find_by(address: normalized_address, location: "#{coordinates[:lat]},#{coordinates[:lon]}")
     
-    if cached_data
+    if cache_entry
       Rails.logger.info "Returning cached weather data for: #{address}"
       return {
         cached: true,
-        data: JSON.parse(cached_data[:data], symbolize_names: true),
-        cached_at: cached_data[:created_at]
+        data: JSON.parse(cache_entry.data, symbolize_names: true),
+        cached_at: cache_entry.created_at
       }
     end
 
     # Do NOT return expired cache data - instead, fetch fresh data from API
 
-    # If not in cache and within limits, fetch from API
+    # If not in cache, fetch from API
     begin
-      # Geocode the address to get coordinates
-      coordinates = geocode_address(address)
-      unless coordinates
-        Rails.logger.error "Failed to geocode address: #{address}"
-        # Return a result with nil data instead of raising an exception
-        return {
-          cached: false,
-          data: nil
-        }
-      end
-
-      # Now that we have coordinates, construct the full cache key
-      full_cache_key = "weather_cache:#{generate_cache_key(address)}:#{coordinates[:lat]},#{coordinates[:lon]}"
-      
-      # Check again with the specific coordinates (in case multiple locations have same name)
-      cached_data_with_coords = nil
-      begin
-        cached_data_with_coords = Rails.cache.read(full_cache_key)
-      rescue Redis::BaseError, Redis::CannotConnectError => e
-        Rails.logger.warn "Redis connection error while reading cache: #{e.message}"
-        # Continue with API call if cache is unavailable
-      end
-      
-      if cached_data_with_coords
-        Rails.logger.info "Returning cached weather data for: #{address}"
-        return {
-          cached: true,
-          data: JSON.parse(cached_data_with_coords[:data], symbolize_names: true),
-          cached_at: cached_data_with_coords[:created_at]
-        }
-      end
-
       # Get weather data from API
       weather_data = fetch_weather_data(coordinates[:lat], coordinates[:lon])
 
-      # Save to cache
+      # Save to cache using the WeatherCache model
       cache_weather_data(generate_cache_key(address), coordinates, weather_data)
 
       Rails.logger.info "Fetched fresh weather data for: #{address}"
@@ -126,13 +88,19 @@ class WeatherService
 
       # First try the US ZIP code API endpoint (most common case)
       coordinates = try_zip_geocoding(address, "US")
-      return coordinates if coordinates
+      return coordinates if coordinates && !coordinates[:error]
 
       # Try ZIP code API endpoints for common countries
       common_zip_countries = [ "CA", "MX", "GB", "ES", "FR", "DE", "IT", "JP", "AU" ]
       common_zip_countries.each do |country|
         coordinates = try_zip_geocoding(address, country)
-        return coordinates if coordinates
+        return coordinates if coordinates && !coordinates[:error]
+      end
+      
+      # If all ZIP code attempts resulted in 'not_found' errors, we can confidently say the ZIP doesn't exist
+      if coordinates && coordinates[:error] == "not_found"
+        Rails.logger.info "ZIP code #{address} does not exist in any of the attempted countries"
+        return coordinates
       end
     end
 
@@ -152,7 +120,7 @@ class WeatherService
 
     # Try ZIP code API endpoint for Mexico (for non-US zip codes)
     coordinates = try_zip_geocoding(address, "MX")
-    return coordinates if coordinates
+    return coordinates if coordinates && !coordinates[:error]
 
     # For Mexican postal codes specifically, try searching for Guadalajara if that's the area
     if address.match?(/^(44|45|46|47)\d{3}$/) # Mexican postal codes for Guadalajara area typically start with 44, 45, 46, 47
@@ -168,7 +136,7 @@ class WeatherService
 
       # Also try ZIP code API for each country as fallback
       coordinates = try_zip_geocoding(address, country)
-      return coordinates if coordinates
+      return coordinates if coordinates && !coordinates[:error]
     end
 
     Rails.logger.error "Failed to geocode address: #{address} using multiple formats"
@@ -219,6 +187,10 @@ class WeatherService
       end
     else
       Rails.logger.error "ZIP geocoding API error: #{response.code} - #{response.body}"
+      # Return a special indicator for 404 errors which typically means ZIP code doesn't exist
+      if response.code == "404"
+        return { error: "not_found", message: response.body }
+      end
       nil
     end
   end
@@ -312,17 +284,13 @@ class WeatherService
   end
 
   def cache_weather_data(address, coordinates, weather_data)
-    # Create cache entry using Rails.cache with 30-minute expiration
+    # Create cache entry using the WeatherCache model with 30-minute expiration
     cache_key = "weather_cache:#{generate_cache_key(address)}:#{coordinates[:lat]},#{coordinates[:lon]}"
-    Rails.cache.write(cache_key, {
+    WeatherCache.create!(
       address: generate_cache_key(address),
       location: "#{coordinates[:lat]},#{coordinates[:lon]}",
-      data: weather_data.to_json,
-      created_at: Time.current
-    }, expires_in: 30.minutes)
-  rescue Redis::BaseError, Redis::CannotConnectError => e
-    Rails.logger.error "Redis connection error while caching weather data: #{e.message}"
-    # Don't raise the error, just log it - the app should still work without caching
+      data: weather_data.to_json
+    )
   rescue => e
     Rails.logger.error "Error caching weather data: #{e.message}"
   end
