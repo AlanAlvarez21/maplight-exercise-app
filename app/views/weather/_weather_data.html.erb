@@ -125,6 +125,12 @@
         </div>
       </div>
     </div>
+    
+    <%# Add button to search another zip when weather data is displayed %>
+    <div class="text-center mt-8">
+      <%= button_to "Search Another Zip", weather_path, method: :get, 
+          class: "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition duration-200 shadow-md" %>
+    </div>
   </div>
 <% else %>
   <!-- Enhanced no weather data view with better styling -->
