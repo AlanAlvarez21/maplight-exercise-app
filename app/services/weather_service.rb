@@ -226,7 +226,7 @@ class WeatherService
   def fetch_weather_data(lat, lon)
     # Get current weather and forecast
     current_uri = URI("#{API_BASE_URL}/weather?lat=#{lat}&lon=#{lon}&units=imperial&appid=#{self.class.api_key}")
-    forecast_uri = URI("#{API_BASE_URL}/forecast?lat=#{lat}&lon=#{lon}&units=imperial&cnt=5&appid=#{self.class.api_key}")
+    forecast_uri = URI("#{API_BASE_URL}/forecast?lat=#{lat}&lon=#{lon}&units=imperial&appid=#{self.class.api_key}")
 
     current_response = Net::HTTP.get_response(current_uri)
     forecast_response = Net::HTTP.get_response(forecast_uri)
@@ -251,19 +251,55 @@ class WeatherService
       wind_deg: current_data&.dig("wind", "deg")
     }
 
-    # Process forecast data (5-day forecast)
+    # Process forecast data
     if forecast_data && forecast_data["list"]
-      weather_info[:forecast] = forecast_data["list"].first(5).map do |day|
-        dt = Time.at(day["dt"])
+      # Get hourly forecast (first 8 items = 24 hours)
+      hourly_forecasts = forecast_data["list"].first(8).map do |item|
+        dt = Time.at(item["dt"])
         {
-          day: dt.strftime("%A"),
-          date: dt.strftime("%m/%d"),
-          high: day.dig("main", "temp_max")&.round,
-          low: day.dig("main", "temp_min")&.round,
-          condition: day.dig("weather", 0, "description")
+          time: dt.strftime("%l:00 %p").strip, # e.g., "2 PM", "3 PM"
+          temp: item.dig("main", "temp")&.round,
+          condition: item.dig("weather", 0, "description"),
+          icon: item.dig("weather", 0, "icon")
         }
       end
+
+      # Get daily forecast (group by day and select key data points)
+      daily_forecasts = {}
+      forecast_data["list"].each do |item|
+        dt = Time.at(item["dt"])
+        day_key = dt.strftime("%m/%d")
+        
+        if daily_forecasts[day_key]
+          # Update high/low temps for the day
+          temp = item.dig("main", "temp")
+          daily_forecasts[day_key][:high] = [temp&.round || 0, daily_forecasts[day_key][:high]].max
+          daily_forecasts[day_key][:low] = [temp&.round || Float::INFINITY, daily_forecasts[day_key][:low]].min
+          # Use the condition and icon from the first occurrence of the day unless there's rain/snow which should take priority
+          current_condition = daily_forecasts[day_key][:condition].to_s.downcase
+          new_condition = item.dig("weather", 0, "description").to_s.downcase
+          # Prioritize precipitation conditions over others
+          if !current_condition.include?("rain") && !current_condition.include?("snow") && (new_condition.include?("rain") || new_condition.include?("snow"))
+            daily_forecasts[day_key][:condition] = item.dig("weather", 0, "description")
+            daily_forecasts[day_key][:icon] = item.dig("weather", 0, "icon")
+          end
+        else
+          daily_forecasts[day_key] = {
+            day: dt.strftime("%A"),
+            date: day_key,
+            high: item.dig("main", "temp_max")&.round,
+            low: item.dig("main", "temp_min")&.round,
+            condition: item.dig("weather", 0, "description"),
+            icon: item.dig("weather", 0, "icon")
+          }
+        end
+      end
+
+      # Limit to 5 days
+      weather_info[:hourly_forecast] = hourly_forecasts
+      weather_info[:forecast] = daily_forecasts.values.first(5)
     else
+      weather_info[:hourly_forecast] = []
       weather_info[:forecast] = []
     end
 
