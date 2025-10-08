@@ -63,3 +63,4 @@ group :development do
 end
 
 gem "dockerfile-rails", ">= 1.7", group: :development
+gem "dotenv-rails", require: "dotenv/load"

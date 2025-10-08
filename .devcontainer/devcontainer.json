@@ -16,7 +16,7 @@
 
   "containerEnv": {
     "KAMAL_REGISTRY_PASSWORD": "$KAMAL_REGISTRY_PASSWORD",
-    "DB_HOST": "postgres"
+    "DOCKER_ENV": "1"
   },
 
   // Use 'forwardPorts' to make a list of ports inside the container available locally.
