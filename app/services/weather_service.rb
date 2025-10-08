@@ -3,6 +3,13 @@ require "json"
 require "cgi"
 
 class WeatherService
+  module Errors
+    class Error < StandardError; end
+    class ApiError < Error; end
+    class GeocodingError < Error; end
+    class ApiKeyMissingError < Error; end
+    class ZipCodeNotFoundError < Error; end
+  end
   API_BASE_URL = "https://api.openweathermap.org/data/2.5"
   GEO_API_BASE_URL = "https://api.openweathermap.org/geo/1.0"
 
@@ -11,13 +18,13 @@ class WeatherService
   end
 
   def get_forecast(address)
+    # Validate input
+    raise ArgumentError, "Address cannot be blank" if address.blank?
+
     # Check if API key is configured
     unless self.class.api_key
       Rails.logger.warn "OpenWeather API key is not configured"
-      # Try to return cached data if available
-      # For this, we'd need to know coordinates, but without API key we can't geocode
-      # So we can't return cached data without knowing the coordinates
-      raise "OpenWeather API key is not configured. Please set OPENWEATHER_API_KEY environment variable."
+      raise WeatherService::Errors::ApiKeyMissingError, "OpenWeather API key is not configured. Please set OPENWEATHER_API_KEY environment variable."
     end
 
     # First, try to find any cached data for this address (to avoid API calls when possible)
@@ -27,9 +34,10 @@ class WeatherService
     
     if cache_entry
       Rails.logger.info "Returning cached weather data for: #{address}"
+      weather_data = JSON.parse(cache_entry.data, symbolize_names: true)
       return {
         cached: true,
-        data: JSON.parse(cache_entry.data, symbolize_names: true),
+        data: WeatherData::CurrentWeather.new(weather_data),
         cached_at: cache_entry.created_at
       }
     end
@@ -38,11 +46,15 @@ class WeatherService
     coordinates = geocode_address(address)
     unless coordinates
       Rails.logger.error "Failed to geocode address: #{address}"
-      # Return a result with nil data instead of raising an exception
       return {
         cached: false,
         data: nil
       }
+    end
+
+    # If geocoding returned a not_found error, raise specific error for the controller
+    if coordinates.is_a?(Hash) && coordinates[:error] == "not_found"
+      raise WeatherService::Errors::ZipCodeNotFoundError, "ZIP code '#{address}' does not exist. Please enter a valid ZIP code."
     end
     
     # Look for cached data in WeatherCache model using address and coordinates
@@ -50,9 +62,10 @@ class WeatherService
     
     if cache_entry
       Rails.logger.info "Returning cached weather data for: #{address}"
+      weather_data = JSON.parse(cache_entry.data, symbolize_names: true)
       return {
         cached: true,
-        data: JSON.parse(cache_entry.data, symbolize_names: true),
+        data: WeatherData::CurrentWeather.new(weather_data),
         cached_at: cache_entry.created_at
       }
     end
@@ -62,84 +75,85 @@ class WeatherService
     # If not in cache, fetch from API
     begin
       # Get weather data from API
-      weather_data = fetch_weather_data(coordinates[:lat], coordinates[:lon])
+      raw_weather_data = fetch_weather_data(coordinates[:lat], coordinates[:lon])
 
       # Save to cache using the WeatherCache model
-      cache_weather_data(generate_cache_key(address), coordinates, weather_data)
+      cache_weather_data(generate_cache_key(address), coordinates, raw_weather_data)
 
       Rails.logger.info "Fetched fresh weather data for: #{address}"
       {
         cached: false,
-        data: weather_data
+        data: WeatherData::CurrentWeather.new(raw_weather_data)
       }
     rescue => e
       Rails.logger.error "Error fetching weather data: #{e.message}"
       Rails.logger.error e.backtrace.join("\n")
-      raise e
+      # Handle different types of errors appropriately
+      case e
+      when Net::TimeoutError, Net::OpenTimeout
+        raise WeatherService::ApiError, "API request timed out"
+      when Net::HTTPError
+        raise WeatherService::ApiError, "API returned HTTP error: #{e.message}"
+      else
+        raise e
+      end
     end
   end
 
   private
 
   def geocode_address(address)
+    # Sanitize the address first
+    sanitized_address = address.to_s.strip
+
     # If the address looks like a ZIP code (all digits), prioritize ZIP code API endpoints first
-    if address.match?(/^\d+$/)
-      Rails.logger.info "Address '#{address}' appears to be a ZIP code, prioritizing ZIP code API endpoints"
+    if sanitized_address.match?(/^\d+$/)
+      Rails.logger.info "Address '#{sanitized_address}' appears to be a ZIP code, prioritizing ZIP code API endpoints"
 
       # First try the US ZIP code API endpoint (most common case)
-      coordinates = try_zip_geocoding(address, "US")
+      coordinates = try_zip_geocoding(sanitized_address, "US")
       return coordinates if coordinates && !coordinates[:error]
 
       # Try ZIP code API endpoints for common countries
       common_zip_countries = [ "CA", "MX", "GB", "ES", "FR", "DE", "IT", "JP", "AU" ]
       common_zip_countries.each do |country|
-        coordinates = try_zip_geocoding(address, country)
+        coordinates = try_zip_geocoding(sanitized_address, country)
         return coordinates if coordinates && !coordinates[:error]
       end
       
       # If all ZIP code attempts resulted in 'not_found' errors, we can confidently say the ZIP doesn't exist
       if coordinates && coordinates[:error] == "not_found"
-        Rails.logger.info "ZIP code #{address} does not exist in any of the attempted countries"
+        Rails.logger.info "ZIP code #{sanitized_address} does not exist in any of the attempted countries"
         return coordinates
+      end
+      
+      # If it looks like a Mexican postal code specifically in the Guadalajara area
+      if sanitized_address.match?(/^(44|45|46|47)\d{3}$/)
+        coordinates = try_geocoding_address("Guadalajara,MX")
+        return coordinates if coordinates
       end
     end
 
     # Try the original address format (might work for specific locations)
-    coordinates = try_geocoding_address(address)
+    coordinates = try_geocoding_address(sanitized_address)
     return coordinates if coordinates
 
-    # If ZIP code approach didn't work, try with country codes
-    if address.match?(/^\d+$/)
-      coordinates = try_geocoding_address("#{address},US")
-      return coordinates if coordinates
+    # Try with common formats for international addresses - only if not already tried as ZIP code
+    unless sanitized_address.match?(/^\d+$/)
+      common_countries = [ "US", "CA", "GB", "MX", "ES", "FR", "DE", "IT", "JP", "AU" ]
+      common_countries.each do |country|
+        coordinates = try_geocoding_address("#{sanitized_address},#{country}")
+        return coordinates if coordinates
+      end
     end
-
-    # Try with Mexico as default for Mexican postal codes
-    coordinates = try_geocoding_address("#{address},MX")
+    
+    # As a final fallback, try the address with country codes
+    coordinates = try_geocoding_address("#{sanitized_address},US") || 
+                  try_geocoding_address("#{sanitized_address},MX") rescue nil
+    
     return coordinates if coordinates
 
-    # Try ZIP code API endpoint for Mexico (for non-US zip codes)
-    coordinates = try_zip_geocoding(address, "MX")
-    return coordinates if coordinates && !coordinates[:error]
-
-    # For Mexican postal codes specifically, try searching for Guadalajara if that's the area
-    if address.match?(/^(44|45|46|47)\d{3}$/) # Mexican postal codes for Guadalajara area typically start with 44, 45, 46, 47
-      coordinates = try_geocoding_address("Guadalajara,MX")
-      return coordinates if coordinates
-    end
-
-    # Try with common formats for international addresses
-    common_countries = [ "US", "CA", "GB", "MX", "ES", "FR", "DE", "IT", "JP", "AU" ]
-    common_countries.each do |country|
-      coordinates = try_geocoding_address("#{address},#{country}")
-      return coordinates if coordinates
-
-      # Also try ZIP code API for each country as fallback
-      coordinates = try_zip_geocoding(address, country)
-      return coordinates if coordinates && !coordinates[:error]
-    end
-
-    Rails.logger.error "Failed to geocode address: #{address} using multiple formats"
+    Rails.logger.error "Failed to geocode address: #{sanitized_address} using multiple formats"
     nil
   end
 

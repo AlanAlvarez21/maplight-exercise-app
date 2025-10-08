@@ -9,6 +9,13 @@ Rails.application.routes.draw do
   get "service-worker" => "rails/pwa#service_worker", as: :pwa_service_worker
   get "manifest" => "rails/pwa#manifest", as: :pwa_manifest
 
+  # API routes with versioning
+  namespace :api do
+    namespace :v1 do
+      get 'weather/:address', to: 'weather#show', as: 'weather_show'
+    end
+  end
+
   # Weather routes
   get "weather", to: "weather#index"
   post "weather/forecast", to: "weather#forecast"

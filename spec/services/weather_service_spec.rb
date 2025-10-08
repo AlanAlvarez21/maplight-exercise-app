@@ -75,7 +75,7 @@ RSpec.describe WeatherService, type: :service do
       it 'returns cached data without making API calls' do
         result = service.get_forecast(test_address)
         expect(result).to include(cached: true)
-        expect(result[:data][:current_temperature]).to eq(75)
+        expect(result[:data].current_temperature).to eq(75)
       end
     end
 
@@ -113,7 +113,7 @@ RSpec.describe WeatherService, type: :service do
         result = service.get_forecast(test_address)
 
         expect(result[:cached]).to be false
-        expect(result[:data]).to include(:location, :current_temperature, :high_temperature, :low_temperature, :description)
+        expect(result[:data]).to respond_to(:location, :current_temperature, :high_temperature, :low_temperature, :description)
       end
     end
 
@@ -149,7 +149,7 @@ RSpec.describe WeatherService, type: :service do
 
         result = service.get_forecast(test_address)
         expect(result[:cached]).to be false  # Should not be cached since it fetched fresh data
-        expect(result[:data]).to include(:location, :current_temperature, :high_temperature, :low_temperature, :description)
+        expect(result[:data]).to respond_to(:location, :current_temperature, :high_temperature, :low_temperature, :description)
       end
     end
 

@@ -1,6 +1,9 @@
 class WeatherController < ApplicationController
+  before_action :validate_and_sanitize_params, only: [:forecast, :clear_cache]
+  before_action :verify_cache_clear_access, only: [:clear_cache]
+  
   def index
-    @address = params[:address]
+    @address = sanitize_address(params[:address])
     if @address.present?
       begin
         @weather_result = WeatherService.new.get_forecast(@address)
@@ -17,6 +20,15 @@ class WeatherController < ApplicationController
             flash.now[:error] = "Could not retrieve weather data for '#{@address}'. Please try using a more specific format like 'City, State' or 'City, Country'. For ZIP codes, ensure they are valid for the US."
           end
         end
+      rescue WeatherService::Errors::ApiKeyMissingError => e
+        Rails.logger.error "API key missing: #{e.message}"
+        flash.now[:error] = "The weather service is temporarily unavailable. Please try again later."
+      rescue WeatherService::Errors::ZipCodeNotFoundError => e
+        Rails.logger.warn "ZIP code not found: #{e.message}"
+        flash.now[:error] = e.message
+      rescue WeatherService::Errors::ApiError => e
+        Rails.logger.error "Weather API error: #{e.message}"
+        flash.now[:error] = "There was an issue retrieving weather data. Please try again later."
       rescue => e
         Rails.logger.error "Error retrieving weather forecast: #{e.message}"
         Rails.logger.error e.backtrace.join("\n")
@@ -26,7 +38,7 @@ class WeatherController < ApplicationController
   end
 
   def forecast
-    address = params[:address]
+    address = sanitize_address(params[:address])
 
     if address.present?
       begin
@@ -59,6 +71,15 @@ class WeatherController < ApplicationController
                                          cached_at: @cached_at }))
           }
         end
+      rescue WeatherService::Errors::ApiKeyMissingError => e
+        Rails.logger.error "API key missing: #{e.message}"
+        flash.now[:error] = "The weather service is temporarily unavailable. Please try again later."
+      rescue WeatherService::Errors::ZipCodeNotFoundError => e
+        Rails.logger.warn "ZIP code not found: #{e.message}"
+        flash.now[:error] = e.message
+      rescue WeatherService::Errors::ApiError => e
+        Rails.logger.error "Weather API error: #{e.message}"
+        flash.now[:error] = "There was an issue retrieving weather data. Please try again later."
       rescue => e
         Rails.logger.error "Error retrieving weather forecast: #{e.message}"
         Rails.logger.error e.backtrace.join("\n")
@@ -155,7 +176,7 @@ class WeatherController < ApplicationController
               error_html = "<div class='bg-red-50 border-l-4 border-red-500 p-4 rounded-lg mt-6'>" +
                            "<div class='flex'>" +
                            "<div class='flex-shrink-0'>" +
-                           "<svg class='h-5 w-5 text-red-500' xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='currentColor'>" +
+                           "<svg class='h-5 w-5 text-green-500' xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='currentColor'>" +
                            "<path fill-rule='evenodd' d='M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z' clip-rule='evenodd' /></svg>" +
                            "</div>" +
                            "<div class='ml-3'>" +
@@ -244,5 +265,23 @@ class WeatherController < ApplicationController
         end
       end
     end
+  end
+
+  private
+
+  def validate_and_sanitize_params
+    # Sanitize all parameters that come in
+    params.transform_values! { |value| sanitize_address(value) }
+  end
+
+  def sanitize_address(address)
+    return nil if address.blank?
+    # Remove any potentially harmful characters and sanitize the input
+    ActionController::Base.helpers.sanitize(address.to_s, tags: []).gsub(/[<>'"\\]/, '').strip
+  end
+
+  def verify_cache_clear_access
+    # Add authentication logic here if needed for cache clearing
+    # For now, we'll allow the cache to be cleared but could add additional checks
   end
 end
